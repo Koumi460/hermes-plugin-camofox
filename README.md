@@ -81,10 +81,13 @@ Use `camofox_vision` as the Camofox equivalent of `browser_vision`:
 
 ```text
 camofox_vision(question="What is visible on this page?", annotate=true)
+camofox_screenshot(full_page=true)
 ```
 
 It captures the active Camofox screenshot, sends it to the configured Hermes
 vision auxiliary model, and returns both `analysis` and `screenshot_path`.
+Pass `full_page=true` to `camofox_vision` or `camofox_screenshot` to capture
+the whole page top to bottom instead of only the current viewport.
 
 If `plugins.entries.camofox.vnc_url` is configured, navigation and vision
 results can also include the noVNC URL so the user can watch or take over the

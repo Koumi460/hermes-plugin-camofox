@@ -175,7 +175,8 @@ def _handle_press(args: dict, **kw) -> str:
 
 def _handle_screenshot(args: dict, **kw) -> str:
     try:
-        resp = client.screenshot(task_id=_task_id(kw))
+        full_page = coerce_bool(args.get("full_page"), False)
+        resp = client.screenshot(task_id=_task_id(kw), full_page=full_page)
         screenshots_dir = get_hermes_home() / "browser_screenshots"
         screenshots_dir.mkdir(parents=True, exist_ok=True)
         path = screenshots_dir / f"camofox_screenshot_{uuid.uuid4().hex[:8]}.png"
@@ -184,6 +185,7 @@ def _handle_screenshot(args: dict, **kw) -> str:
             "success": True,
             "screenshot_path": str(path),
             "mime_type": resp.headers.get("Content-Type", "image/png"),
+            "full_page": full_page,
         })
     except Exception as exc:
         return _tool_exception(exc)
@@ -194,7 +196,8 @@ def _handle_vision(args: dict, **kw) -> str:
     if not question:
         return tool_error("question is required", success=False)
     try:
-        resp = client.screenshot(task_id=_task_id(kw))
+        full_page = coerce_bool(args.get("full_page"), False)
+        resp = client.screenshot(task_id=_task_id(kw), full_page=full_page)
         image_bytes = resp.content
 
         screenshots_dir = get_hermes_home() / "browser_screenshots"
@@ -247,6 +250,7 @@ def _handle_vision(args: dict, **kw) -> str:
             "analysis": analysis,
             "screenshot_path": str(path),
             "mime_type": resp.headers.get("Content-Type", "image/png"),
+            "full_page": full_page,
         }
         vnc = client.get_vnc_url()
         if vnc:
@@ -414,7 +418,16 @@ CAMOFOX_PRESS_SCHEMA = {
 CAMOFOX_SCREENSHOT_SCHEMA = {
     "name": "camofox_screenshot",
     "description": "Take a Camofox screenshot and return a local PNG path, not inline base64.",
-    "parameters": {"type": "object", "properties": {}},
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "full_page": {
+                "type": "boolean",
+                "description": "Capture the entire page top to bottom instead of only the current viewport.",
+                "default": False,
+            }
+        },
+    },
 }
 
 CAMOFOX_VISION_SCHEMA = {
@@ -433,6 +446,11 @@ CAMOFOX_VISION_SCHEMA = {
             "annotate": {
                 "type": "boolean",
                 "description": "Include a short accessibility snapshot excerpt as context for the vision model.",
+                "default": False,
+            },
+            "full_page": {
+                "type": "boolean",
+                "description": "Capture and analyze the entire page top to bottom instead of only the current viewport.",
                 "default": False,
             },
         },

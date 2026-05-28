@@ -520,7 +520,7 @@ def interact(
         return data
 
 
-def screenshot(*, task_id: Optional[str]) -> requests.Response:
+def screenshot(*, task_id: Optional[str], full_page: bool = False) -> requests.Response:
     session = get_session(task_id)
     with session.lock:
         ensure_tab(session, session.last_navigation_url or session.last_url or "about:blank")
@@ -530,7 +530,7 @@ def screenshot(*, task_id: Optional[str]) -> requests.Response:
             resp = _request(
                 "GET",
                 f"/tabs/{session.tab_id}/screenshot",
-                params={"userId": session.user_id},
+                params={"userId": session.user_id, "fullPage": "true" if full_page else "false"},
                 raw=True,
             )
             return {"response": resp}

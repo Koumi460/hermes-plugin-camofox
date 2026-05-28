@@ -366,7 +366,11 @@ def with_recovery(
     raise last_error
 
 
-def navigate(url: str, *, task_id: Optional[str], delay_s: float = 0.0) -> Dict[str, Any]:
+def _bounded_delay(delay_s: float, cfg: CamofoxConfig) -> float:
+    return max(0.0, min(float(delay_s or 0.0), cfg.navigate_delay_max_s))
+
+
+def navigate(url: str, *, task_id: Optional[str], delay_s: float = 5.0) -> Dict[str, Any]:
     cfg = get_config()
     session = get_session(task_id)
     with session.lock:
@@ -390,7 +394,7 @@ def navigate(url: str, *, task_id: Optional[str], delay_s: float = 0.0) -> Dict[
         session.last_url = str(nav_data.get("url") or url) if isinstance(nav_data, dict) else url
         session.last_navigation_url = url
 
-        delay_s = max(0.0, min(float(delay_s or 0.0), cfg.navigate_delay_max_s))
+        delay_s = _bounded_delay(delay_s, cfg)
         initial_snapshot_chars = 0
         try:
             first = snapshot(task_id=task_id, offset=0, _session=session)
@@ -494,7 +498,9 @@ def interact(
     path: str,
     body: Dict[str, Any],
     safe_to_replay_after_new_tab: bool = False,
+    delay_s: float = 0.0,
 ) -> Dict[str, Any]:
+    cfg = get_config()
     session = get_session(task_id)
     with session.lock:
         ensure_tab(session, session.last_navigation_url or session.last_url or "about:blank")
@@ -516,6 +522,15 @@ def interact(
             safe_to_replay_after_new_tab=safe_to_replay_after_new_tab,
             fallback_url=session.last_navigation_url or session.last_url or "about:blank",
         )
+        delay_s = _bounded_delay(delay_s, cfg)
+        if delay_s > 0:
+            time.sleep(delay_s)
+            snap = snapshot(task_id=task_id, offset=0, _session=session)
+            data.update(snap)
+            data["delayed_recapture"] = True
+            data["delay_s"] = delay_s
+        else:
+            data["delayed_recapture"] = False
         data.update(recovery.to_dict())
         return data
 

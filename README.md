@@ -52,15 +52,19 @@ Camofox.
 
 ## Lazy-Loaded Pages
 
-Some pages report navigation complete before JavaScript has populated records.
-Use `delay_s` on navigation:
+Some pages report navigation or actions complete before JavaScript has populated
+records. Navigation, click, type, back, and key press tools default to a
+5-second delayed recapture:
 
 ```text
 camofox_navigate(url="https://example.com/search", delay_s=5)
+camofox_click(ref="e4", delay_s=5)
+camofox_type(ref="e7", text="query", delay_s=5)
 ```
 
-The tool captures an initial snapshot, waits, captures a fresh snapshot, and
-returns only the second snapshot.
+Navigation captures an initial snapshot, waits, captures a fresh snapshot, and
+returns the second snapshot. Mutating actions wait before returning a fresh
+post-action snapshot. Use `delay_s=0` for pages that update synchronously.
 
 ## Large Snapshots
 

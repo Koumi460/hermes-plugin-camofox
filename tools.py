@@ -39,7 +39,7 @@ def _handle_navigate(args: dict, **kw) -> str:
         result = client.navigate(
             url,
             task_id=_task_id(kw),
-            delay_s=coerce_float(args.get("delay_s"), 0.0, 0.0, 300.0),
+            delay_s=coerce_float(args.get("delay_s"), 5.0, 0.0, 300.0),
         )
         shaped = shape_snapshot(result)
         return tool_result({**result, **shaped, "success": True})
@@ -94,6 +94,7 @@ def _handle_click(args: dict, **kw) -> str:
             path="/click",
             body=body,
             safe_to_replay_after_new_tab=False,
+            delay_s=coerce_float(args.get("delay_s"), 5.0, 0.0, 300.0),
         )
         return tool_result({"success": True, "clicked": ref or selector, **data})
     except Exception as exc:
@@ -122,6 +123,7 @@ def _handle_type(args: dict, **kw) -> str:
             path="/type",
             body=body,
             safe_to_replay_after_new_tab=False,
+            delay_s=coerce_float(args.get("delay_s"), 5.0, 0.0, 300.0),
         )
         return tool_result({"success": True, "typed": text, "element": ref or selector, **data})
     except Exception as exc:
@@ -151,6 +153,7 @@ def _handle_back(args: dict, **kw) -> str:
             path="/back",
             body={},
             safe_to_replay_after_new_tab=False,
+            delay_s=coerce_float(args.get("delay_s"), 5.0, 0.0, 300.0),
         )
         return tool_result({"success": True, **data})
     except Exception as exc:
@@ -167,6 +170,7 @@ def _handle_press(args: dict, **kw) -> str:
             path="/press",
             body={"key": key},
             safe_to_replay_after_new_tab=False,
+            delay_s=coerce_float(args.get("delay_s"), 5.0, 0.0, 300.0),
         )
         return tool_result({"success": True, "pressed": key, **data})
     except Exception as exc:
@@ -315,8 +319,8 @@ CAMOFOX_NAVIGATE_SCHEMA = {
             "url": {"type": "string", "description": "URL to open."},
             "delay_s": {
                 "type": "number",
-                "description": "Optional seconds to wait after the first snapshot before returning a fresh second snapshot.",
-                "default": 0,
+                "description": "Seconds to wait after the first snapshot before returning a fresh second snapshot.",
+                "default": 5,
             },
         },
         "required": ["url"],
@@ -356,6 +360,11 @@ _SELECTOR_PROP = {
         "for example textarea[name='q'], input[name='q'], or input[type='search']."
     ),
 }
+_ACTION_DELAY_PROP = {
+    "type": "number",
+    "description": "Seconds to wait after the action before returning a fresh snapshot.",
+    "default": 5,
+}
 
 CAMOFOX_CLICK_SCHEMA = {
     "name": "camofox_click",
@@ -364,7 +373,10 @@ CAMOFOX_CLICK_SCHEMA = {
         "interactive element without a ref, use selector. If recovery recreates a "
         "tab, the click is not replayed; refresh refs first."
     ),
-    "parameters": {"type": "object", "properties": {"ref": _REF_PROP, "selector": _SELECTOR_PROP}},
+    "parameters": {
+        "type": "object",
+        "properties": {"ref": _REF_PROP, "selector": _SELECTOR_PROP, "delay_s": _ACTION_DELAY_PROP},
+    },
 }
 
 CAMOFOX_TYPE_SCHEMA = {
@@ -389,6 +401,7 @@ CAMOFOX_TYPE_SCHEMA = {
                 "description": "Use fill for inputs, keyboard for focused/contenteditable fields.",
                 "default": "fill",
             },
+            "delay_s": _ACTION_DELAY_PROP,
         },
         "required": ["text"],
     },
@@ -406,13 +419,17 @@ CAMOFOX_SCROLL_SCHEMA = {
 CAMOFOX_BACK_SCHEMA = {
     "name": "camofox_back",
     "description": "Go back in the active Camofox tab.",
-    "parameters": {"type": "object", "properties": {}},
+    "parameters": {"type": "object", "properties": {"delay_s": _ACTION_DELAY_PROP}},
 }
 
 CAMOFOX_PRESS_SCHEMA = {
     "name": "camofox_press",
     "description": "Press a keyboard key in the active Camofox tab.",
-    "parameters": {"type": "object", "properties": {"key": {"type": "string"}}, "required": ["key"]},
+    "parameters": {
+        "type": "object",
+        "properties": {"key": {"type": "string"}, "delay_s": _ACTION_DELAY_PROP},
+        "required": ["key"],
+    },
 }
 
 CAMOFOX_SCREENSHOT_SCHEMA = {

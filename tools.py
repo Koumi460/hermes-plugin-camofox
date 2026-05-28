@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import uuid
 from typing import Any, Dict, Optional
 
@@ -83,33 +84,46 @@ def _handle_snapshot(args: dict, **kw) -> str:
 
 def _handle_click(args: dict, **kw) -> str:
     ref = str(args.get("ref") or "").strip().lstrip("@")
-    if not ref:
-        return tool_error("ref is required", success=False)
+    selector = str(args.get("selector") or "").strip()
+    if not ref and not selector:
+        return tool_error("ref or selector is required", success=False)
     try:
+        body = {"ref": ref} if ref else {"selector": selector}
         data = client.interact(
             task_id=_task_id(kw),
             path="/click",
-            body={"ref": ref},
+            body=body,
             safe_to_replay_after_new_tab=False,
         )
-        return tool_result({"success": True, "clicked": ref, **data})
+        return tool_result({"success": True, "clicked": ref or selector, **data})
     except Exception as exc:
         return _tool_exception(exc)
 
 
 def _handle_type(args: dict, **kw) -> str:
     ref = str(args.get("ref") or "").strip().lstrip("@")
+    selector = str(args.get("selector") or "").strip()
     text = str(args.get("text") or "")
-    if not ref:
-        return tool_error("ref is required", success=False)
+    if not ref and not selector:
+        return tool_error("ref or selector is required", success=False)
     try:
+        body = {"text": text}
+        if ref:
+            body["ref"] = ref
+        else:
+            body["selector"] = selector
+        if coerce_bool(args.get("press_enter"), False) or coerce_bool(args.get("submit"), False):
+            body["pressEnter"] = True
+        mode = str(args.get("mode") or "").strip().lower()
+        if mode in {"fill", "keyboard"}:
+            body["mode"] = mode
         data = client.interact(
             task_id=_task_id(kw),
             path="/type",
-            body={"ref": ref, "text": text},
+            body=body,
             safe_to_replay_after_new_tab=False,
         )
-        return tool_result({"success": True, "typed": text, "element": ref, **data})
+        return tool_result({"success": True, "typed": text, "element": ref or selector, **data})
     except Exception as exc:
         return _tool_exception(exc)
 
@@ -171,6 +185,73 @@ def _handle_screenshot(args: dict, **kw) -> str:
             "screenshot_path": str(path),
             "mime_type": resp.headers.get("Content-Type", "image/png"),
         })
+    except Exception as exc:
+        return _tool_exception(exc)
+
+
+def _handle_vision(args: dict, **kw) -> str:
+    question = str(args.get("question") or "").strip()
+    if not question:
+        return tool_error("question is required", success=False)
+    try:
+        resp = client.screenshot(task_id=_task_id(kw))
+        image_bytes = resp.content
+
+        screenshots_dir = get_hermes_home() / "browser_screenshots"
+        screenshots_dir.mkdir(parents=True, exist_ok=True)
+        path = screenshots_dir / f"camofox_vision_{uuid.uuid4().hex[:8]}.png"
+        path.write_bytes(image_bytes)
+
+        annotation_context = ""
+        if coerce_bool(args.get("annotate"), False):
+            try:
+                snap = client.snapshot(task_id=_task_id(kw))
+                snapshot_text = str(snap.get("snapshot") or "")
+                if snapshot_text:
+                    annotation_context = (
+                        "\n\nAccessibility snapshot with Camofox refs/selectors context:\n"
+                        f"{snapshot_text[:4000]}"
+                    )
+            except Exception:
+                annotation_context = ""
+
+        from agent.redact import redact_sensitive_text
+
+        annotation_context = redact_sensitive_text(annotation_context)
+        prompt = f"Analyze this Camofox browser screenshot and answer: {question}{annotation_context}"
+        img_b64 = base64.b64encode(image_bytes).decode("utf-8")
+
+        from agent.auxiliary_client import call_llm
+
+        response = call_llm(
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{img_b64}"},
+                        },
+                    ],
+                }
+            ],
+            task="vision",
+            temperature=0.1,
+        )
+        analysis = (response.choices[0].message.content or "").strip() if response.choices else ""
+        analysis = redact_sensitive_text(analysis)
+
+        result = {
+            "success": True,
+            "analysis": analysis,
+            "screenshot_path": str(path),
+            "mime_type": resp.headers.get("Content-Type", "image/png"),
+        }
+        vnc = client.get_vnc_url()
+        if vnc:
+            result["vnc_url"] = vnc
+        return tool_result(result)
     except Exception as exc:
         return _tool_exception(exc)
 
@@ -263,20 +344,49 @@ CAMOFOX_SNAPSHOT_SCHEMA = {
 }
 
 _REF_PROP = {"type": "string", "description": "Element ref from a camofox_snapshot, with or without @ prefix."}
+_SELECTOR_PROP = {
+    "type": "string",
+    "description": (
+        "CSS selector alternative when Camofox snapshot omits a ref. Useful for "
+        "combobox/search inputs that Camofox intentionally does not annotate, "
+        "for example textarea[name='q'], input[name='q'], or input[type='search']."
+    ),
+}
 
 CAMOFOX_CLICK_SCHEMA = {
     "name": "camofox_click",
-    "description": "Click a Camofox element by ref. If recovery recreates a tab, the click is not replayed; refresh refs first.",
-    "parameters": {"type": "object", "properties": {"ref": _REF_PROP}, "required": ["ref"]},
+    "description": (
+        "Click a Camofox element by ref or CSS selector. If the snapshot shows an "
+        "interactive element without a ref, use selector. If recovery recreates a "
+        "tab, the click is not replayed; refresh refs first."
+    ),
+    "parameters": {"type": "object", "properties": {"ref": _REF_PROP, "selector": _SELECTOR_PROP}},
 }
 
 CAMOFOX_TYPE_SCHEMA = {
     "name": "camofox_type",
-    "description": "Type text into a Camofox element by ref. If recovery recreates a tab, typing is not replayed; refresh refs first.",
+    "description": (
+        "Type text into a Camofox element by ref or CSS selector. Use selector when "
+        "Camofox snapshot omits a ref for a combobox/search input; common Google "
+        "selectors are textarea[name='q'] or input[name='q']. If recovery recreates "
+        "a tab, typing is not replayed; refresh refs first."
+    ),
     "parameters": {
         "type": "object",
-        "properties": {"ref": _REF_PROP, "text": {"type": "string", "description": "Text to type."}},
-        "required": ["ref", "text"],
+        "properties": {
+            "ref": _REF_PROP,
+            "selector": _SELECTOR_PROP,
+            "text": {"type": "string", "description": "Text to type."},
+            "press_enter": {"type": "boolean", "description": "Press Enter after typing.", "default": False},
+            "submit": {"type": "boolean", "description": "Alias for press_enter.", "default": False},
+            "mode": {
+                "type": "string",
+                "enum": ["fill", "keyboard"],
+                "description": "Use fill for inputs, keyboard for focused/contenteditable fields.",
+                "default": "fill",
+            },
+        },
+        "required": ["text"],
     },
 }
 
@@ -305,6 +415,29 @@ CAMOFOX_SCREENSHOT_SCHEMA = {
     "name": "camofox_screenshot",
     "description": "Take a Camofox screenshot and return a local PNG path, not inline base64.",
     "parameters": {"type": "object", "properties": {}},
+}
+
+CAMOFOX_VISION_SCHEMA = {
+    "name": "camofox_vision",
+    "description": (
+        "Take a screenshot of the active Camofox page and analyze it with the "
+        "configured vision model. Use this like browser_vision when the text "
+        "snapshot misses visual layout, CAPTCHA-like screens, canvas content, "
+        "charts, or when you need to see what is on screen. Returns analysis "
+        "and a local screenshot_path. If configured, also returns vnc_url."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "question": {"type": "string", "description": "Question to answer about the current screen."},
+            "annotate": {
+                "type": "boolean",
+                "description": "Include a short accessibility snapshot excerpt as context for the vision model.",
+                "default": False,
+            },
+        },
+        "required": ["question"],
+    },
 }
 
 CAMOFOX_LIST_TABS_SCHEMA = {
@@ -351,6 +484,7 @@ TOOLS = (
     ("camofox_back", CAMOFOX_BACK_SCHEMA, _handle_back, ""),
     ("camofox_press", CAMOFOX_PRESS_SCHEMA, _handle_press, ""),
     ("camofox_screenshot", CAMOFOX_SCREENSHOT_SCHEMA, _handle_screenshot, ""),
+    ("camofox_vision", CAMOFOX_VISION_SCHEMA, _handle_vision, ""),
     ("camofox_list_tabs", CAMOFOX_LIST_TABS_SCHEMA, _handle_list_tabs, ""),
     ("camofox_get_images", CAMOFOX_GET_IMAGES_SCHEMA, _handle_get_images, ""),
     ("camofox_close", CAMOFOX_CLOSE_SCHEMA, _handle_close, ""),

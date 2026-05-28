@@ -149,6 +149,9 @@ def health(timeout: float = 5.0) -> Dict[str, Any]:
 
 
 def get_vnc_url() -> Optional[str]:
+    cfg_vnc_url = get_config().vnc_url
+    if cfg_vnc_url:
+        return cfg_vnc_url
     if not _vnc_checked:
         health()
     return _vnc_url

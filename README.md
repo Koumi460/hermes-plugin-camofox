@@ -21,6 +21,7 @@ plugins:
   entries:
     camofox:
       url: "http://localhost:9377"
+      vnc_url: "http://localhost:6080"  # optional noVNC URL to surface to agents
       api_key: ""
       managed_persistence: true
       adopt_existing_tab: true
@@ -73,6 +74,22 @@ camofox_snapshot(pattern="checkout", context=2)
 
 The plugin does not silently truncate at 8000 characters or summarize through
 an LLM unless `summarize=true` is explicitly provided.
+
+## Visual Inspection
+
+Use `camofox_vision` as the Camofox equivalent of `browser_vision`:
+
+```text
+camofox_vision(question="What is visible on this page?", annotate=true)
+```
+
+It captures the active Camofox screenshot, sends it to the configured Hermes
+vision auxiliary model, and returns both `analysis` and `screenshot_path`.
+
+If `plugins.entries.camofox.vnc_url` is configured, navigation and vision
+results can also include the noVNC URL so the user can watch or take over the
+browser visually. The plugin does not connect to raw VNC itself; it treats VNC
+as a user-visible live-view URL.
 
 ## Recovery
 

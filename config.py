@@ -21,6 +21,7 @@ class RecoveryConfig:
 class CamofoxConfig:
     url: str = ""
     api_key: str = ""
+    vnc_url: str = ""
     managed_persistence: bool = False
     user_id: str = ""
     session_key: str = ""
@@ -109,6 +110,7 @@ def get_config() -> CamofoxConfig:
     return CamofoxConfig(
         url=(str(raw.get("url") or "").strip() or os.getenv("CAMOFOX_TOOL_URL", "").strip()).rstrip("/"),
         api_key=str(raw.get("api_key") or os.getenv("CAMOFOX_TOOL_API_KEY", "")).strip(),
+        vnc_url=(str(raw.get("vnc_url") or "").strip() or os.getenv("CAMOFOX_TOOL_VNC_URL", "").strip()).rstrip("/"),
         managed_persistence=_as_bool(raw.get("managed_persistence"), False),
         user_id=str(raw.get("user_id") or os.getenv("CAMOFOX_USER_ID", "")).strip(),
         session_key=str(raw.get("session_key") or os.getenv("CAMOFOX_SESSION_KEY", "")).strip(),

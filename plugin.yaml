@@ -12,6 +12,7 @@ provides_tools:
   - camofox_back
   - camofox_press
   - camofox_screenshot
+  - camofox_vision
   - camofox_list_tabs
   - camofox_get_images
   - camofox_close

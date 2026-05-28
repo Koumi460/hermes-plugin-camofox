@@ -1,0 +1,18 @@
+name: browser-camofox
+version: 1.0.0
+description: "Camofox local anti-detection browser tools. Exposes a separate camofox_* toolset so Chrome/CDP browser_* tools can run at the same time."
+author: NousResearch
+kind: backend
+provides_tools:
+  - camofox_navigate
+  - camofox_snapshot
+  - camofox_click
+  - camofox_type
+  - camofox_scroll
+  - camofox_back
+  - camofox_press
+  - camofox_screenshot
+  - camofox_list_tabs
+  - camofox_get_images
+  - camofox_close
+  - camofox_import_cookies
